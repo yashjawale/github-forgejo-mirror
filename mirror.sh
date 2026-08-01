@@ -173,15 +173,26 @@ fetch_endpoint() {
     local page=1
 
     while :; do
-        local repos
-        repos=$(curl -s -H "Authorization: token $GH_TOKEN" "$url&per_page=$PER_PAGE&page=$page")
+        local response code body count
+        response=$(curl -s -w $'\n%{http_code}' -H "Authorization: token $GH_TOKEN" \
+            "$url&per_page=$PER_PAGE&page=$page")
+        code="${response##*$'\n'}"
+        body="${response%$'\n'$code}"
 
-        local count
-        count=$(echo "$repos" | jq length)
+        if [[ "$code" != "200" ]]; then
+            if [[ "$code" == "404" ]]; then
+                log "  Skipping $url (404: org not found or not accessible)"
+                return 0
+            fi
+            log "ERROR: GitHub API returned HTTP $code for $url: $body"
+            exit 1
+        fi
+
+        count=$(echo "$body" | jq length)
         [[ "$count" -eq 0 ]] && break
 
         log "Processing page $page ($count repos) from $url"
-        process_repos "$repos"
+        process_repos "$body"
         page=$((page + 1))
     done
 }
