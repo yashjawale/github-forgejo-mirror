@@ -144,23 +144,31 @@ process_repos() {
         fi
 
         if [[ "$PRIVATE" == "true" ]]; then
-            AUTH_CLONE_URL="https://$GH_TOKEN@github.com/$OWNER/$NAME.git"
+            CLONE_URL="https://github.com/$OWNER/$NAME.git"
+            MIGRATE_AUTH=$',
+              "auth_username": "'"$GH_USER"'",
+              "auth_password": "'"$GH_TOKEN"'"'
         else
-            AUTH_CLONE_URL="https://github.com/$OWNER/$NAME.git"
+            CLONE_URL="https://github.com/$OWNER/$NAME.git"
+            MIGRATE_AUTH=""
         fi
 
-        if ! curl -s -f -X POST "$FORGEJO_URL/api/v1/repos/migrate" \
+        local migrate_body migrate_code
+        migrate_body=$(curl -s -w $'\n%{http_code}' -X POST "$FORGEJO_URL/api/v1/repos/migrate" \
             -H "Authorization: token $FORGEJO_TOKEN" \
             -H "Content-Type: application/json" \
             -d "{
-              \"clone_addr\": \"$AUTH_CLONE_URL\",
+              \"clone_addr\": \"$CLONE_URL\",
               \"repo_name\": \"$NAME\",
               \"repo_owner\": \"$TARGET\",
               \"mirror\": true,
-              \"mirror_interval\": \"$MIRROR_INTERVAL\",
+              \"mirror_interval\": \"$MIRROR_INTERVAL\"$MIGRATE_AUTH,
               \"private\": $DESIRED_PRIVATE
-            }" >/dev/null; then
-            log "  ERROR: failed to import $OWNER/$NAME"
+            }")
+        migrate_code="${migrate_body##*$'\n'}"
+        migrate_body="${migrate_body%$'\n'$migrate_code}"
+        if [[ "$migrate_code" != "200" && "$migrate_code" != "201" ]]; then
+            log "  ERROR: failed to import $OWNER/$NAME (HTTP $migrate_code): $migrate_body"
             continue
         fi
 
