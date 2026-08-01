@@ -50,6 +50,28 @@ For a **fine-grained** token (no expiry option / fine-grained PAT):
    ./mirror.sh
    ```
 
+## Usage
+
+```
+Usage: ./mirror.sh [options]
+
+Options:
+  -n, --dry-run   Print what would be done without making any changes
+  -h, --help      Show this help message
+```
+
+### Dry run
+
+Pass `-n` or `--dry-run` to preview the actions the script would take without
+changing anything on Forgejo (no orgs created, no repos imported, no visibility
+updates):
+
+```sh
+./mirror.sh --dry-run
+```
+
+Expected changes are printed with a `[dry-run]` prefix.
+
 ## Configuration
 
 | Variable          | Default     | Description                                          |

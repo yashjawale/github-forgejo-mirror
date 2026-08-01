@@ -22,12 +22,37 @@ ORG_WHITELIST="${ORG_WHITELIST:-}"
 PER_PAGE=100
 PAGE=1
 
+DRY_RUN=false
+
+usage() {
+    cat <<EOF
+Usage: $0 [options]
+
+Options:
+  -n, --dry-run   Print what would be done without making any changes
+  -h, --help      Show this help message
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -n|--dry-run) DRY_RUN=true ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+    esac
+    shift
+done
+
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
 ensure_org() {
     local org="$1"
     if curl -sf -H "Authorization: token $FORGEJO_TOKEN" \
         "$FORGEJO_URL/api/v1/orgs/$org" >/dev/null; then
+        return 0
+    fi
+    if [[ "$DRY_RUN" == true ]]; then
+        log "  [dry-run] Would create org $org in Forgejo"
         return 0
     fi
     log "  Creating org $org in Forgejo"
@@ -43,6 +68,7 @@ ensure_org() {
 
 log "Mirroring GitHub repositories to Forgejo ($FORGEJO_URL)"
 log "Mirroring private repos: $MIRROR_PRIVATE"
+[[ "$DRY_RUN" == true ]] && log "Dry run mode: no changes will be made"
 
 while :; do
     REPOS=$(curl -s -H "Authorization: token $GH_TOKEN" \
@@ -101,7 +127,9 @@ while :; do
             FG_PRIVATE=$(echo "$FG_REPO" | jq -r '.private')
             FG_MIRROR=$(echo "$FG_REPO" | jq -r '.mirror')
             if [[ "$FG_MIRROR" == "true" && "$FG_PRIVATE" != "$DESIRED_PRIVATE" ]]; then
-                if curl -s -f -X PATCH "$FORGEJO_URL/api/v1/repos/$TARGET/$NAME" \
+                if [[ "$DRY_RUN" == true ]]; then
+                    log "  [dry-run] Would update visibility: $TARGET/$NAME -> private=$DESIRED_PRIVATE"
+                elif curl -s -f -X PATCH "$FORGEJO_URL/api/v1/repos/$TARGET/$NAME" \
                     -H "Authorization: token $FORGEJO_TOKEN" \
                     -H "Content-Type: application/json" \
                     -d "{\"private\": $DESIRED_PRIVATE}" >/dev/null; then
@@ -116,6 +144,11 @@ while :; do
         fi
 
         log "Importing $OWNER/$NAME as mirror -> $TARGET"
+
+        if [[ "$DRY_RUN" == true ]]; then
+            log "  [dry-run] Would import as mirror"
+            continue
+        fi
 
         if [[ "$PRIVATE" == "true" ]]; then
             AUTH_CLONE_URL="https://$GH_TOKEN@github.com/$OWNER/$NAME.git"
