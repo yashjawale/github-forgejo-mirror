@@ -92,6 +92,11 @@ Expected changes are printed with a `[dry-run]` prefix.
 - Organization repos are mirrored under the same org in Forgejo; the org is
   created automatically if it doesn't exist. Set `ORG_WHITELIST` to limit which
   orgs are mirrored (e.g. `ORG_WHITELIST="acme,labs"`).
+- When `ORG_WHITELIST` is set, only your personal repos and repos from the
+  whitelisted orgs are queried (via `/user/repos?affiliation=owner` and
+  `/orgs/{org}/repos`). Repos from other orgs are never fetched, which keeps the
+  script fast even if you belong to orgs with thousands of repos. Without a
+  whitelist, all accessible repos are listed.
 - Repos already present in Forgejo are skipped, so the script is safe to run
   repeatedly.
 - If a mirrored repo's visibility changes on GitHub (public ↔ private), the

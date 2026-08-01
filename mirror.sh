@@ -20,7 +20,6 @@ ORG_VISIBILITY="${ORG_VISIBILITY:-public}"
 ORG_WHITELIST="${ORG_WHITELIST:-}"
 
 PER_PAGE=100
-PAGE=1
 
 DRY_RUN=false
 
@@ -70,21 +69,15 @@ log "Mirroring GitHub repositories to Forgejo ($FORGEJO_URL)"
 log "Mirroring private repos: $MIRROR_PRIVATE"
 [[ "$DRY_RUN" == true ]] && log "Dry run mode: no changes will be made"
 
-while :; do
-    REPOS=$(curl -s -H "Authorization: token $GH_TOKEN" \
-      "https://api.github.com/user/repos?affiliation=owner,organization_member&per_page=$PER_PAGE&page=$PAGE")
+process_repos() {
+    local repos="$1"
 
-    if ! echo "$REPOS" | jq -e 'type == "array"' >/dev/null; then
-        log "ERROR: unexpected GitHub API response: $REPOS"
+    if ! echo "$repos" | jq -e 'type == "array"' >/dev/null; then
+        log "ERROR: unexpected GitHub API response: $repos"
         exit 1
     fi
 
-    COUNT=$(echo "$REPOS" | jq length)
-    [[ "$COUNT" -eq 0 ]] && break
-
-    log "Processing page $PAGE ($COUNT repos)"
-
-    echo "$REPOS" | jq -r '.[] | @base64' | while read -r repo; do
+    echo "$repos" | jq -r '.[] | @base64' | while read -r repo; do
         _jq() { echo "$repo" | base64 --decode | jq -r "$1"; }
 
         NAME=$(_jq '.name')
@@ -173,8 +166,33 @@ while :; do
 
         log "  Imported as mirror"
     done
+}
 
-    PAGE=$((PAGE + 1))
-done
+fetch_endpoint() {
+    local url="$1"
+    local page=1
+
+    while :; do
+        local repos
+        repos=$(curl -s -H "Authorization: token $GH_TOKEN" "$url&per_page=$PER_PAGE&page=$page")
+
+        local count
+        count=$(echo "$repos" | jq length)
+        [[ "$count" -eq 0 ]] && break
+
+        log "Processing page $page ($count repos) from $url"
+        process_repos "$repos"
+        page=$((page + 1))
+    done
+}
+
+if [[ -n "$ORG_WHITELIST" ]]; then
+    fetch_endpoint "https://api.github.com/user/repos?affiliation=owner"
+    for org in $(echo "$ORG_WHITELIST" | tr ',' ' '); do
+        fetch_endpoint "https://api.github.com/orgs/$org/repos?type=all"
+    done
+else
+    fetch_endpoint "https://api.github.com/user/repos?affiliation=owner,organization_member"
+fi
 
 log "Repository mirror import complete."
